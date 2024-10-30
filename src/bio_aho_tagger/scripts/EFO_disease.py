@@ -1,54 +1,131 @@
-from utils import download_file
 from collections import defaultdict
-from rdflib import Graph
+from nltk.corpus import stopwords
 import ahocorasick
+import requests
 import pickle
+import nltk
+
+nltk.download("stopwords")
 
 
-def parse_efo_diseases(filepath):
-    g = Graph()
-    g.parse(filepath, format="xml")
+sparql_query = """
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+PREFIX oboInOwl: <http://www.geneontology.org/formats/oboInOwl#>
+PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
-    # Query for disease terms (EFO_0000408), including exact synonyms
-    query = """
-        SELECT ?term ?label ?exactSynonym WHERE {
-            ?term rdfs:subClassOf* <http://www.ebi.ac.uk/efo/EFO_0000408> .
-            ?term rdfs:label ?label .
-            OPTIONAL { ?term <http://www.geneontology.org/formats/oboInOwl#hasExactSynonym> ?exactSynonym . }
+SELECT DISTINCT ?term ?label ?exactSynonym ?exactSynonymType ?narrowSynonym ?narrowSynonymType
+WHERE {
+    ?term rdfs:subClassOf* <http://www.ebi.ac.uk/efo/EFO_0000408> .
+    ?term rdfs:label ?label .
+    FILTER (?term != <http://www.ebi.ac.uk/efo/EFO_0000408>) .
+
+    # Optional block for exact synonyms
+    OPTIONAL {
+        ?term oboInOwl:hasExactSynonym ?exactSynonym .
+        OPTIONAL {
+            ?exactSynonymAxiom
+                owl:annotatedSource ?term ;
+                owl:annotatedProperty oboInOwl:hasExactSynonym ;
+                owl:annotatedTarget ?exactSynonym .
+            OPTIONAL {
+                ?exactSynonymAxiom oboInOwl:hasSynonymType ?exactSynonymType .
+            }
         }
-    """
+        FILTER NOT EXISTS {
+            ?exactSynonymAxiom oboInOwl:hasSynonymType ?exactSynonymType .
+            FILTER(?exactSynonymType IN (
+                <http://purl.obolibrary.org/obo/mondo#ABBREVIATION>,
+                <http://purl.obolibrary.org/obo/mondo/mondo-base#ABBREVIATION>,
+                <http://purl.obolibrary.org/obo/hp#abbreviation>
+            ))
+        }
+    }
 
-    results = g.query(query)
-    # init a dictionary to store results grouped by term
-    diseases = defaultdict(lambda: {"label": None, "synonyms": defaultdict(list)})
+    # Optional block for narrow synonyms
+    OPTIONAL {
+        ?term oboInOwl:hasNarrowSynonym ?narrowSynonym .
+        OPTIONAL {
+            ?narrowSynonymAxiom
+                owl:annotatedSource ?term ;
+                owl:annotatedProperty oboInOwl:hasNarrowSynonym ;
+                owl:annotatedTarget ?narrowSynonym .
+            OPTIONAL {
+                ?narrowSynonymAxiom oboInOwl:hasSynonymType ?narrowSynonymType .
+            }
+        }
+        FILTER NOT EXISTS {
+            ?narrowSynonymAxiom oboInOwl:hasSynonymType ?narrowSynonymType .
+            FILTER(?narrowSynonymType IN (
+                <http://purl.obolibrary.org/obo/mondo#ABBREVIATION>,
+                <http://purl.obolibrary.org/obo/mondo/mondo-base#ABBREVIATION>,
+                <http://purl.obolibrary.org/obo/hp#abbreviation>
+            ))
+        }
+    }
+}
+"""
 
-    for row in results:
-        term_uri = str(row.term)
-        diseases[term_uri]["label"] = str(row.label)
 
-        if row.exactSynonym:
-            diseases[term_uri]["synonyms"]["Exact"].append(str(row.exactSynonym))
+def query_sparql(url, sparql_query):
+    response = requests.get(url, params={"query": sparql_query, "format": "json"})
+    data = response.json()
+    return data
+
+
+def format_data(data):
+    diseases = defaultdict(lambda: {"label": None, "synonyms": defaultdict(set)})
+
+    for row in data["results"]["bindings"]:
+        ontology_id = ":".join(row["term"]["value"].split("/")[-1].split("_"))
+        label = row["label"]["value"]
+
+        # add the label
+        diseases[ontology_id]["label"] = label
+
+        # add exact synonyms
+        exact_synonym = row.get("exactSynonym", {}).get("value")
+        if exact_synonym:
+            diseases[ontology_id]["synonyms"]["exact"].add(exact_synonym)
+
+        # add narrow synonyms
+        narrow_synonym = row.get("narrowSynonym", {}).get("value")
+        if narrow_synonym:
+            diseases[ontology_id]["synonyms"]["narrow"].add(narrow_synonym)
     return diseases
 
 
 def main():
 
-    url = "https://github.com/EBISPOT/efo/releases/download/current/efo.owl"
-    filename = "efo.owl"
+    stop_words = set(stopwords.words("english"))
 
-    download_file(url, filename)
-    diseases = parse_efo_diseases(filename)
+    data = query_sparql("http://localhost:3030/efo/query", sparql_query)
+    diseases = format_data(data)
 
+    # 0 for label
+    # 1 for exact synonym
+    # 2 for narrow synonym
     automaton = ahocorasick.Automaton()
 
-    for term_uri, data in diseases.items():
-        if not isinstance(term_uri, str):
+    for ontology_id, data in diseases.items():
+        if not isinstance(ontology_id, str):
             continue
-        o_id = ":".join(term_uri.split("/")[-1].split("_"))
         label = data["label"]
-        for s in data["synonyms"]["Exact"]:
+
+        # add main term
+        ll = label.lower()
+        automaton.add_word(ll, (ll, 0, (label, "Disease", ontology_id)))
+
+        # add exact synonyms
+        for s in data["synonyms"]["exact"]:
             syn = s.lower()
-            automaton.add_word(syn, (syn, (label, "Disease", o_id)))
+            if syn not in stop_words:
+                automaton.add_word(syn, (syn, 1, (label, "Disease", ontology_id)))
+
+        # add narrow synonyms
+        for s in data["synonyms"]["narrow"]:
+            syn = s.lower()
+            if syn not in stop_words:
+                automaton.add_word(syn, (syn, 2, (label, "Disease", ontology_id)))
 
     automaton.make_automaton()
 

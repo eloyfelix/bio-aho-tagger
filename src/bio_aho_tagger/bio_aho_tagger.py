@@ -12,25 +12,6 @@ def merge_results(*lists):
     """
     Merge results from different automatons, keeping the longest match when there are overlaps,
     while allowing exact matches with different entity types to be retained.
-
-    Example:
-    disease_matches = [
-        (0, 6, ('cancer', 'disease', 'MONDO:0004992')),
-        (0, 11, ('lung cancer', 'disease', 'MONDO:0008903')),
-        (20, 25, ('heart', 'disease', 'EFO:0003777')) # EFO:0003777 doesn't really include 'heart' synonym
-    ]
-    organ_matches = [
-        (0, 4, ('lung', 'organ', 'UBERON:0002048')),
-        (20, 25, ('heart', 'organ', 'UBERON:0000948'))
-    ]
-    merge_results(disease_matches, organ_matches)
-
-    Expected Output:
-    [
-        (0, 11, ('lung cancer', 'disease', 'MONDO:0005070')),  # "lung" removed as it's a substring
-        (20, 25, ('heart', 'disease', 'EFO:0003777')),      # "heart" kept as both "disease" and "organ"
-        (20, 25, ('heart', 'organ', 'UBERON:0000948'))
-    ]
     """
     all_matches = []
     for automaton_matches in lists:

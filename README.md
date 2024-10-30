@@ -9,16 +9,6 @@ Extract all entities found in a text (can use one of the built-in demo automaton
 ```python
 from bio_aho_tagger import BioAhoTagger
 
-bt = BioAhoTagger("chembl_smiles")
-smiles = bt.get("aspirin")
-
-entities = bt.extract_entities("The doctor prescribed metformin for managing diabetes and suggested amoxicillin to treat the bacterial infection.")
-```
-
-
-```python
-from bio_aho_tagger import BioAhoTagger
-
 bt = BioAhoTagger("efo_disease")
 disease = bt.get("lung cancer")
 
