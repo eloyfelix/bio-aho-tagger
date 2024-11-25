@@ -69,29 +69,19 @@ class BioAhoTagger:
 
     def extract_entities(self, text):
         text = text.lower().replace("’", "'")
+        text_length = len(text)
         entities = []
-        text_length = len(text)  # Cache the length of the text for efficiency
 
         for end_index, original_value in self.automaton.iter_long(text):
             start_index = end_index - len(original_value[0]) + 1
-
-            # Determine the character after the match
             next_char = text[end_index + 1] if end_index + 1 < text_length else None
-
-            # Check end boundary
-            if next_char is None or (  # End of text or valid stop character
-                next_char in self.stop_chars or next_char == ":"
-            ) and not (next_char == ">" and end_index != 0) and not (next_char == "(" and end_index != 0):
-
-                # Determine the character before the match
-                prev_char = text[start_index - 1] if start_index > 0 else None
-
-                # Check start boundary
-                if prev_char is None or (  # Start of text or valid stop character
-                    prev_char in self.stop_chars
-                ) and not (prev_char == "<" and start_index != text_length - 1) and not (
-                    prev_char == ")" and start_index != text_length - 1
-                ):
-                    entities.append((start_index, end_index + 1, (original_value)))
+            prev_char = text[start_index - 1] if start_index > 0 else None
+            if (
+                (next_char is None or next_char in self.stop_chars or next_char == ":")
+                and not (next_char in {">", "("} and end_index != 0)
+                and (prev_char is None or prev_char in self.stop_chars)
+                and not (prev_char in {"<", ")"} and start_index != text_length - 1)
+            ):
+                entities.append((start_index, end_index + 1, original_value))
 
         return entities
