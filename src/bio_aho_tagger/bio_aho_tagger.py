@@ -39,7 +39,7 @@ def merge_results(*lists):
 
 class BioAhoTagger:
 
-    stop_chars = [" ", ",", ".", "\n", "\t", "<", ">", "(", ")"]
+    stop_chars = [" ", ",", ".", "\n", "\t", "<", ">", "(", ")", "/"]
 
     def __init__(self, file_path=None):
         self.automaton = self.load_automaton(file_path)
