@@ -39,7 +39,7 @@ def merge_results(*lists):
 
 class BioAhoTagger:
 
-    stop_chars = [" ", ",", ".", "\n"]
+    stop_chars = [" ", ",", ".", "\n", "\t", "<", ">", "(", ")"]
 
     def __init__(self, file_path=None):
         self.automaton = self.load_automaton(file_path)
@@ -65,17 +65,33 @@ class BioAhoTagger:
                 return pickle.load(file)
 
     def get(self, name):
-        return self.automaton.get(name.lower(), None)
+        return self.automaton.get(name.lower().replace("’", "'"), None)
 
     def extract_entities(self, text):
-        text = text.lower()
+        text = text.lower().replace("’", "'")
         entities = []
+        text_length = len(text)  # Cache the length of the text for efficiency
+
         for end_index, original_value in self.automaton.iter_long(text):
             start_index = end_index - len(original_value[0]) + 1
-            if end_index + 1 <= len(text):
-                if (end_index + 1 == len(text)) or (
-                    text[end_index + 1] in self.stop_chars
+
+            # Determine the character after the match
+            next_char = text[end_index + 1] if end_index + 1 < text_length else None
+
+            # Check end boundary
+            if next_char is None or (  # End of text or valid stop character
+                next_char in self.stop_chars or next_char == ":"
+            ) and not (next_char == ">" and end_index != 0) and not (next_char == "(" and end_index != 0):
+
+                # Determine the character before the match
+                prev_char = text[start_index - 1] if start_index > 0 else None
+
+                # Check start boundary
+                if prev_char is None or (  # Start of text or valid stop character
+                    prev_char in self.stop_chars
+                ) and not (prev_char == "<" and start_index != text_length - 1) and not (
+                    prev_char == ")" and start_index != text_length - 1
                 ):
-                    if start_index == 0 or text[start_index - 1] in self.stop_chars:
-                        entities.append((start_index, end_index + 1, (original_value)))
+                    entities.append((start_index, end_index + 1, (original_value)))
+
         return entities

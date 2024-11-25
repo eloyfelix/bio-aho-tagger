@@ -15,9 +15,13 @@ PREFIX owl: <http://www.w3.org/2002/07/owl#>
 
 SELECT DISTINCT ?term ?label ?exactSynonym ?exactSynonymType ?narrowSynonym ?narrowSynonymType
 WHERE {
-    ?term rdfs:subClassOf* <http://www.ebi.ac.uk/efo/EFO_0000408> .
+    VALUES ?parentTerm { 
+        <http://www.ebi.ac.uk/efo/EFO_0000408> 
+        <http://purl.obolibrary.org/obo/HP_0000118> 
+    }
+    ?term rdfs:subClassOf* ?parentTerm .
     ?term rdfs:label ?label .
-    FILTER (?term != <http://www.ebi.ac.uk/efo/EFO_0000408>) .
+    FILTER (?term != ?parentTerm) .
 
     # Optional block for exact synonyms
     OPTIONAL {
@@ -111,21 +115,21 @@ def main():
             continue
         label = data["label"]
 
-        # add main term
-        ll = label.lower()
-        automaton.add_word(ll, (ll, 0, (label, "Disease", ontology_id)))
-
         # add exact synonyms
-        for s in data["synonyms"]["exact"]:
-            syn = s.lower()
+        for syn in data["synonyms"]["exact"]:
+            syn = syn.lower().replace("’", "'")
             if syn not in stop_words:
                 automaton.add_word(syn, (syn, 1, (label, "Disease", ontology_id)))
 
         # add narrow synonyms
-        for s in data["synonyms"]["narrow"]:
-            syn = s.lower()
+        for syn in data["synonyms"]["narrow"]:
+            syn = syn.lower().replace("’", "'")
             if syn not in stop_words:
                 automaton.add_word(syn, (syn, 2, (label, "Disease", ontology_id)))
+
+        # add main term
+        ll = label.lower().replace("’", "'")
+        automaton.add_word(ll, (ll, 0, (label, "Disease", ontology_id)))
 
     automaton.make_automaton()
 
