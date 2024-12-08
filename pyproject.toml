@@ -13,7 +13,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build]
-include = ["bio_aho_tagger/data/chembl_smiles.pkl", "bio_aho_tagger/data/efo_disease.pkl"]
+include = ["bio_aho_tagger/data/chembl_smiles.pkl", "bio_aho_tagger/data/efo_disease.pkl", "bio_aho_tagger/data/opsin-core-2.8.0-jar-with-dependencies.jar"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bio_aho_tagger"]
