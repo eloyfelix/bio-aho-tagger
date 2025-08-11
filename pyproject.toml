@@ -1,11 +1,11 @@
 [project]
 name = "bio_aho_tagger"
-version = "0.1.0"
+version = "0.1.1"
 description = "Baseline dictionary based package to resolve chemical structures and tag biological entities."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pyahocorasick @ git+https://github.com/eloyfelix/pyahocorasick.git@394865c9df0ea0a0e6584de2b128cb06e43235ed"
+    "pyahocorasick==2.2.0"
 ]
 
 [build-system]
