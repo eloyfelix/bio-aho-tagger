@@ -28,13 +28,18 @@ def parse_uniprot_dat(filepath, targets):
     results = {k: [] for k in targets.keys()}
 
     # precompile regexes
-    recname_re = re.compile(r"DE\s+RecName:\s+Full=(.+);")
-    altname_re = re.compile(r"DE\s+AltName:\s+Full=(.+);")
+    # OX taxonomy id
     ox_re = re.compile(r"OX\s+NCBI_TaxID=(\d+);")
+    # Detect DE section starts
+    de_recname_start = re.compile(r"DE\s+RecName:")
+    de_altname_start = re.compile(r"DE\s+AltName:")
+    # Extract tokens like Full=...; or Short=...; within a DE line
+    de_token_re = re.compile(r"(Full|Short)=(.+?);")
 
     with gzip.open(filepath, "rt") as file:
         protein = {}
         matched_key = None  # which target this entry belongs to
+        de_section = None  # current DE section context: 'RecName' | 'AltName' | None
 
         for line in file:
             # get the uniprot accession
@@ -52,6 +57,7 @@ def parse_uniprot_dat(filepath, targets):
                     "synonyms": [],
                 }
                 matched_key = None
+                de_section = None
 
             # organism (OS): try to match by organism string
             if line.startswith("OS"):
@@ -70,19 +76,25 @@ def parse_uniprot_dat(filepath, targets):
                             matched_key = key
                             break
 
-            # preferred name (RecName) - strip references in curly braces
-            recname_match = recname_re.match(line)
-            if recname_match:
-                protein["preferred_name"] = re.sub(
-                    r"\{.*?\}", "", recname_match.group(1)
-                ).strip()
+            # Parse DE lines capturing RecName Full (preferred) and Short (synonyms),
+            # and AltName Full/Short as synonyms. Remove any references in {curly braces}.
+            if line.startswith("DE"):
+                # update section on explicit RecName/AltName starts
+                if de_recname_start.match(line):
+                    de_section = "RecName"
+                elif de_altname_start.match(line):
+                    de_section = "AltName"
 
-            # synonyms (AltName) - strip references in curly braces
-            altname_match = altname_re.match(line)
-            if altname_match:
-                protein["synonyms"].append(
-                    re.sub(r"\{.*?\}", "", altname_match.group(1)).strip()
-                )
+                # extract tokens present in this line (works for both start and continuation lines)
+                for tok, val in de_token_re.findall(line):
+                    cleaned = re.sub(r"\{.*?\}", "", val).strip()
+                    if tok == "Full" and de_section == "RecName":
+                        # set preferred name (first Full encountered wins)
+                        if not protein["preferred_name"]:
+                            protein["preferred_name"] = cleaned
+                    elif tok in ("Short", "Full") and de_section in ("RecName", "AltName"):
+                        # treat RecName Short and all AltName names as synonyms
+                        protein["synonyms"].append(cleaned)
 
         # flush last
         if protein and matched_key is not None:
@@ -95,11 +107,24 @@ def add_proteins_to_automaton(automaton, proteins):
     """Add a list of protein dicts into an existing Aho-Corasick automaton."""
     for prot in proteins:
         acc = prot["accession"]
-        pref_name = prot["preferred_name"]
-        for s in prot["synonyms"]:
-            syn = s.lower()
-            # If a synonym appears in multiple organisms, the last added wins.
-            automaton.add_word(syn, (syn, (pref_name, "Protein", f"uniprot:{acc}")))
+        pref_name = prot.get("preferred_name", "")
+
+        # Build list of terms to index: preferred name + synonyms, de-duplicated (case-insensitive)
+        terms = []
+        if pref_name:
+            terms.append(pref_name)
+        terms.extend(prot.get("synonyms", []))
+
+        seen = set()
+        for name in terms:
+            if not name:
+                continue
+            key = name.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            # If a term appears in multiple organisms, the last added wins (order controlled by caller)
+            automaton.add_word(key, (key, (pref_name, "Protein", f"uniprot:{acc}")))
     return automaton
 
 

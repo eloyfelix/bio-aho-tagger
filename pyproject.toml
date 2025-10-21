@@ -1,6 +1,6 @@
 [project]
 name = "bio_aho_tagger"
-version = "0.1.2"
+version = "0.1.3"
 description = "Baseline dictionary based package to resolve chemical structures and tag biological entities."
 readme = "README.md"
 requires-python = ">=3.10"
