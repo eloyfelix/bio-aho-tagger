@@ -4,7 +4,7 @@ import pickle
 
 built_in_dicts = {
     "chembl_smiles": "chembl_smiles.pkl",
-    "efo_disease": "efo_disease.pkl",
+    "swissprot_rat_mouse_human": "swissprot_rat_mouse_human.pkl",
 }
 
 
